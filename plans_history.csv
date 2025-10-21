@@ -1,3 +1,4 @@
 timestamp,name,age,gender,height_cm,weight_kg,goal,cultural_food,dietary_pref,equipment,time_available,budget,bmi,bmi_cat,motivation
 2025-10-09T14:39:32.153155,Mohammad Usman Dar,22,Male,170,70,Weight Loss,Indian,Veg,,45,Low,24.2,Normal,"""Small consistent efforts compound into remarkable results. You've got this, Mohammad!"""
-2025-10-09T14:46:24.728255,Mohammad Usman Dar,22,Male,170,55,Muscle Gain,Indian,Non-Veg,None,45,Low,19.0,Normal,"Remember Usman, this is a starting point. Feel free to adapt it to your preferences and needs. Good luck!"
+2025-10-09T14:46:24.728255,Mohammad Usman Dar,22,Male,170,55,Muscle Gain,Indian,Non-Veg,,45,Low,19.0,Normal,"Remember Usman, this is a starting point. Feel free to adapt it to your preferences and needs. Good luck!"
+2025-10-21T17:36:33.048517,Mohammad Usman Dar,22,Male,155,57,Muscle Gain,Indian,Non-Vegetarian,None,70,Low,23.7,Normal,

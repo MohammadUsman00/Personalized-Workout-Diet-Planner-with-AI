@@ -2,7 +2,7 @@ import os
 import io
 import base64
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Any
 import re
 
 import streamlit as st
@@ -11,39 +11,239 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
 
+# Import our AI modules
+from ai_services import AIOrchestrator, WorkoutAIService, NutritionAIService, AnalyticsAIService, AIChatService
+from ai_dashboard import AIDashboard
+from ui_components import AIUIComponents
+from utils import calculate_bmi, calculate_bmr, calculate_tdee, validate_user_inputs
+import config
+
 
 def configure_page() -> None:
     st.set_page_config(
-        page_title="AI-Powered Personalized Workout & Diet Planner",
-        page_icon="🧘‍♀️",
-        layout="centered",
+        page_title="AI-Powered Fitness Planner",
+        page_icon="🤖",
+        layout="wide",
+        initial_sidebar_state="expanded",
     )
 
-    # Animated gradient header
+    # Futuristic AI styling
     st.markdown(
         """
         <style>
-        .gradient-text {
-            font-size: 2.0rem;
-            font-weight: 800;
-            background: linear-gradient(90deg, #7F7CFF, #00C2FF, #00E6A8, #FFC371);
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap');
+        
+        /* Global AI Theme */
+        .main .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            max-width: 1400px;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e0e0e0;
+        }
+        
+        /* AI Header */
+        .ai-main-header {
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #533483 100%);
+            padding: 3rem 2rem;
+            border-radius: 25px;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+            border: 2px solid #00d4ff;
+        }
+        
+        .ai-main-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0,212,255,0.1), transparent);
+            animation: ai-scan 4s infinite;
+        }
+        
+        @keyframes ai-scan {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        .ai-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 3rem;
+            font-weight: 900;
+            background: linear-gradient(45deg, #00d4ff, #00ff88, #ff6b6b, #ffd93d, #9d4edd);
+            background-size: 500% 500%;
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            animation: flow 6s ease-in-out infinite;
-            background-size: 300% 300%;
+            animation: ai-gradient-flow 6s ease-in-out infinite;
+            text-align: center;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+            letter-spacing: 2px;
         }
-        @keyframes flow {
-            0% { background-position: 0% 50%; }
+        
+        @keyframes ai-gradient-flow {
+            0%, 100% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
         }
-        .subtext { color: #5b5b5b; }
-        .footer { text-align: center; color: #888; margin-top: 2rem; }
+        
+        .ai-subtitle {
+            font-family: 'Exo 2', sans-serif;
+            font-size: 1.3rem;
+            color: #a0a0a0;
+            text-align: center;
+            font-weight: 300;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .ai-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #00d4ff, #00ff88);
+            color: #0f0f23;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: 'Exo 2', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin: 0.5rem;
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+        
+        /* AI Particles */
+        .ai-particles {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #00d4ff;
+            border-radius: 50%;
+            animation: ai-float 8s infinite ease-in-out;
+            box-shadow: 0 0 10px #00d4ff;
+        }
+        
+        .ai-particles:nth-child(1) { top: 15%; left: 10%; animation-delay: 0s; }
+        .ai-particles:nth-child(2) { top: 25%; left: 85%; animation-delay: 2s; }
+        .ai-particles:nth-child(3) { top: 60%; left: 15%; animation-delay: 4s; }
+        .ai-particles:nth-child(4) { top: 70%; left: 80%; animation-delay: 6s; }
+        
+        @keyframes ai-float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 0.6; }
+            50% { transform: translateY(-30px) rotate(180deg); opacity: 1; }
+        }
+        
+        /* Enhanced Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 4px;
+            background: #1e1e2e;
+            border-radius: 15px;
+            padding: 0.5rem;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            background: transparent;
+            border-radius: 10px;
+            padding: 0.75rem 1.5rem;
+            font-family: 'Exo 2', sans-serif;
+            font-weight: 600;
+            color: #a0a0a0;
+            transition: all 0.3s ease;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(135deg, #00d4ff, #00ff88);
+            color: #0f0f23;
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+        
+        /* Enhanced Buttons */
+        .stButton > button {
+            background: linear-gradient(135deg, #00d4ff, #00ff88);
+            color: #0f0f23;
+            border: none;
+            border-radius: 12px;
+            padding: 0.75rem 2rem;
+            font-family: 'Exo 2', sans-serif;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 212, 255, 0.4);
+        }
+        
+        /* AI Sidebar */
+        .css-1d391kg {
+            background: linear-gradient(180deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            border-right: 3px solid #00d4ff;
+        }
+        
+        .stSidebar .stSelectbox > div > div {
+            background: #1e1e2e;
+            border: 2px solid #00d4ff;
+            border-radius: 10px;
+            color: #e0e0e0;
+        }
+        
+        .stSidebar .stTextInput > div > div > input {
+            background: #1e1e2e;
+            border: 2px solid #00d4ff;
+            border-radius: 10px;
+            color: #e0e0e0;
+            font-family: 'Exo 2', sans-serif;
+        }
+        
+        .stSidebar .stButton > button {
+            background: linear-gradient(135deg, #00d4ff, #00ff88);
+            color: #0f0f23;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .stSidebar .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        /* AI Footer */
+        .ai-footer {
+            text-align: center;
+            color: #a0a0a0;
+            margin-top: 3rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+            border-radius: 20px;
+            border: 1px solid #00d4ff;
+            font-family: 'Exo 2', sans-serif;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .ai-title { font-size: 2rem; }
+            .ai-subtitle { font-size: 1rem; }
+        }
         </style>
-        <div style="text-align:center; margin-bottom: 0.75rem;">
-          <div class="gradient-text">🧘‍♀️ AI-Powered Personalized Workout & Diet Planner</div>
-          <div class="subtext">Create tailored 7-day workout and meal plans using Gemini Flash</div>
+        
+        <div class="ai-main-header">
+            <div class="ai-particles"></div>
+            <div class="ai-particles"></div>
+            <div class="ai-particles"></div>
+            <div class="ai-particles"></div>
+            <div class="ai-title">🤖 AI-POWERED FITNESS PLANNER</div>
+            <div class="ai-subtitle">Advanced Artificial Intelligence for Personalized Health & Fitness</div>
+            <div style="text-align: center; margin-top: 1rem;">
+                <span class="ai-badge">🧠 AI-Powered</span>
+                <span class="ai-badge">⚡ Real-time</span>
+                <span class="ai-badge">🎯 Personalized</span>
+                <span class="ai-badge">📊 Analytics</span>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -61,28 +261,61 @@ def configure_gemini(api_key: str) -> None:
 
 
 def build_prompt(user_inputs: Dict[str, str]) -> str:
+    # Enhanced prompt with more detailed instructions
     return f"""
-You are a professional, empathetic fitness and diet coach. Create a practical, budget-friendly, culturally-aware 7-day plan for the following student. Use clear day-wise formatting, bullets, and concise explanations.
+You are an expert fitness and nutrition coach with 15+ years of experience. Create a comprehensive, science-based 7-day plan for the following individual. Focus on sustainability, safety, and realistic progression.
 
-Student Profile:
+CLIENT PROFILE:
 - Name: {user_inputs['name']}
 - Age: {user_inputs['age']} years
 - Gender: {user_inputs['gender']}
 - Height: {user_inputs['height_cm']} cm
 - Weight: {user_inputs['weight_kg']} kg
-- Fitness Goal: {user_inputs['goal']}
-- Cultural / Regional Food Type: {user_inputs['cultural_food']}
-- Dietary Preference: {user_inputs['dietary_pref']}
+- BMI: {user_inputs['bmi']} ({user_inputs['bmi_cat']})
+- Primary Goal: {user_inputs['goal']}
+- Cultural Food Preferences: {user_inputs['cultural_food']}
+- Dietary Restrictions: {user_inputs['dietary_pref']}
 - Available Equipment: {user_inputs['equipment']}
-- Daily Time Availability: {user_inputs['time_available']} minutes
-- Budget: {user_inputs['budget']}
+- Daily Time Commitment: {user_inputs['time_available']} minutes
+- Budget Level: {user_inputs['budget']}
 
-Output strictly structured as:
-1. Workout Plan (Day-wise: Day 1..Day 7). For each day include: warm-up, main sets (with sets/reps or time), cool-down, and easy alternatives if short on time.
-2. Meal Plan (Day-wise: Day 1..Day 7). For each day include: breakfast, lunch, dinner, and 1 snack. Respect cultural + dietary preferences and budget.
-3. Motivation Quote (one short, uplifting line)
+REQUIRED OUTPUT FORMAT:
 
-Keep the tone friendly and human. Avoid markdown tables; prefer bullet points.
+1. WORKOUT PLAN (Day 1-7)
+   For each day, provide:
+   - Warm-up (5-10 minutes)
+   - Main workout with specific exercises, sets, reps, and rest periods
+   - Cool-down and stretching
+   - Alternative exercises if equipment is limited
+   - Estimated calories burned
+   - Difficulty level (Beginner/Intermediate/Advanced)
+
+2. NUTRITION PLAN (Day 1-7)
+   For each day, provide:
+   - Breakfast with portion sizes and calories
+   - Lunch with portion sizes and calories
+   - Dinner with portion sizes and calories
+   - 1-2 healthy snacks with calories
+   - Hydration goals (water intake)
+   - Total daily calories and macronutrient breakdown
+   - Shopping list for the week
+
+3. PROGRESS TRACKING
+   - Weekly milestones
+   - Key metrics to monitor
+   - Success indicators
+
+4. MOTIVATION & TIPS
+   - Daily motivational quote
+   - 3 practical tips for success
+   - Common challenges and solutions
+
+5. SAFETY NOTES
+   - Important safety considerations
+   - When to consult a healthcare provider
+   - Warning signs to watch for
+
+Use clear, actionable language. Include specific measurements and timing. Make it practical and achievable for their lifestyle and constraints.
 """.strip()
 
 
@@ -191,34 +424,73 @@ def _sanitize_for_pdf(text: str) -> str:
 def generate_pdf_bytes(title: str, content: str) -> bytes:
     pdf = FPDF()
     # Set margins explicitly to avoid layout issues
-    left_margin = 15
-    right_margin = 15
-    top_margin = 15
+    left_margin = 20
+    right_margin = 20
+    top_margin = 20
     pdf.set_left_margin(left_margin)
     pdf.set_right_margin(right_margin)
     pdf.set_top_margin(top_margin)
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
-    # Title
-    pdf.set_font("Arial", "B", 16)
+    # Enhanced title with styling
+    pdf.set_font("Arial", "B", 18)
     title_text = _sanitize_for_pdf(title)
-    pdf.multi_cell(pdf.w - left_margin - right_margin, 8, txt=title_text)
-    pdf.ln(2)
+    pdf.set_fill_color(102, 126, 234)  # Blue background
+    pdf.set_text_color(255, 255, 255)  # White text
+    pdf.cell(pdf.w - left_margin - right_margin, 12, txt=title_text, fill=True, align="C")
+    pdf.ln(8)
+    
+    # Reset colors for body text
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_fill_color(255, 255, 255)
 
-    # Body
+    # Add generation date
+    pdf.set_font("Arial", "I", 10)
+    pdf.cell(0, 6, txt=f"Generated on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", align="R")
+    pdf.ln(8)
+
+    # Enhanced body formatting
     pdf.set_font("Arial", size=11)
     usable_width = pdf.w - left_margin - right_margin
-    for raw_line in content.splitlines():
+    
+    # Process content with better formatting
+    lines = content.splitlines()
+    for i, raw_line in enumerate(lines):
         text_line = _sanitize_for_pdf(raw_line)
         if not text_line.strip():
-            text_line = " "
-        pdf.multi_cell(usable_width, 6, txt=text_line)
+            pdf.ln(3)
+            continue
+            
+        # Check if line is a header (starts with Day, contains numbers, or is all caps)
+        if (text_line.startswith("Day") or 
+            any(word.isupper() and len(word) > 3 for word in text_line.split()) or
+            text_line.startswith("**") or text_line.startswith("##")):
+            pdf.ln(4)
+            pdf.set_font("Arial", "B", 12)
+            pdf.set_text_color(102, 126, 234)  # Blue color for headers
+            pdf.multi_cell(usable_width, 7, txt=text_line.replace("*", "").replace("#", ""))
+            pdf.set_font("Arial", size=11)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(2)
+        else:
+            # Regular content
+            if text_line.startswith("- ") or text_line.startswith("• "):
+                pdf.set_font("Arial", size=10)
+                pdf.multi_cell(usable_width, 5, txt=text_line)
+            else:
+                pdf.set_font("Arial", size=11)
+                pdf.multi_cell(usable_width, 6, txt=text_line)
 
-    pdf_str = pdf.output(dest="S")  # may return str, bytes, or bytearray depending on fpdf version
+    # Add footer
+    pdf.set_y(-20)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(128, 128, 128)
+    pdf.cell(0, 6, txt="Generated by AI-Powered Workout & Diet Planner", align="C")
+
+    pdf_str = pdf.output(dest="S")
     if isinstance(pdf_str, (bytes, bytearray)):
         return bytes(pdf_str)
-    # Fallback for string output
     return str(pdf_str).encode("latin1", errors="ignore")
 
 
@@ -251,42 +523,180 @@ def init_session_state() -> None:
         "diet_text": "",
         "motivation_text": "",
         "plans_df": None,
+        "show_progress": False,
+        "progress_data": [],
+        "current_week": 1,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
+def create_progress_dashboard():
+    """Create an interactive progress tracking dashboard"""
+    st.markdown("### 📈 Progress Tracking Dashboard")
+    
+    # Create tabs for different tracking views
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Weekly Overview", "🏋️ Workout Log", "🍽️ Nutrition Log", "📈 Analytics"])
+    
+    with tab1:
+        st.markdown("#### Weekly Progress Summary")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Current Week", f"Week {st.session_state.get('current_week', 1)}")
+        with col2:
+            st.metric("Workouts Completed", "0/7")
+        with col3:
+            st.metric("Average Daily Calories", "0")
+        
+        # Progress bars
+        st.markdown("#### Progress Bars")
+        st.markdown(
+            """
+            <div class="progress-container">
+                <div class="progress-bar" style="width: 0%;"></div>
+            </div>
+            <p>Workout Completion: 0%</p>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with tab2:
+        st.markdown("#### Workout Log")
+        st.info("Log your daily workouts here to track progress!")
+        
+        with st.form("workout_log"):
+            date = st.date_input("Date")
+            workout_type = st.selectbox("Workout Type", ["Cardio", "Strength", "Flexibility", "Mixed"])
+            duration = st.number_input("Duration (minutes)", min_value=1, max_value=300)
+            intensity = st.select_slider("Intensity", options=["Low", "Medium", "High"])
+            notes = st.text_area("Notes")
+            
+            if st.form_submit_button("Log Workout"):
+                st.success("Workout logged successfully!")
+    
+    with tab3:
+        st.markdown("#### Nutrition Log")
+        st.info("Track your daily nutrition intake!")
+        
+        with st.form("nutrition_log"):
+            date = st.date_input("Date")
+            calories = st.number_input("Calories Consumed", min_value=0, max_value=5000)
+            protein = st.number_input("Protein (g)", min_value=0, max_value=500)
+            carbs = st.number_input("Carbs (g)", min_value=0, max_value=1000)
+            fat = st.number_input("Fat (g)", min_value=0, max_value=500)
+            water = st.number_input("Water (glasses)", min_value=0, max_value=20)
+            
+            if st.form_submit_button("Log Nutrition"):
+                st.success("Nutrition logged successfully!")
+    
+    with tab4:
+        st.markdown("#### Analytics & Insights")
+        st.info("View your progress trends and get insights!")
+        
+        # Placeholder for charts
+        st.markdown("📊 **Progress Charts will appear here**")
+        st.markdown("- Weight tracking over time")
+        st.markdown("- Workout frequency trends")
+        st.markdown("- Nutrition adherence")
+        st.markdown("- Goal achievement rate")
+
+
 def sidebar_form() -> Dict[str, str]:
     with st.sidebar:
-        st.header("Your Details")
+        st.header("🎯 Your Profile")
+        
+        # Personal Information
+        with st.expander("👤 Personal Details", expanded=True):
+            name = st.text_input("Full Name", value="", placeholder="Enter your name")
+            age = st.number_input("Age", min_value=10, max_value=90, value=22, step=1)
+            gender = st.selectbox("Gender", ["Male", "Female", "Other"])
 
-        name = st.text_input("Name", value="")
-        age = st.number_input("Age", min_value=10, max_value=90, value=22, step=1)
-        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+            c1, c2 = st.columns(2)
+            with c1:
+                height_cm = st.number_input("Height (cm)", min_value=100, max_value=230, value=170, step=1)
+            with c2:
+                weight_kg = st.number_input("Weight (kg)", min_value=30, max_value=200, value=70, step=1)
 
-        c1, c2 = st.columns(2)
-        with c1:
-            height_cm = st.number_input("Height (cm)", min_value=100, max_value=230, value=170, step=1)
-        with c2:
-            weight_kg = st.number_input("Weight (kg)", min_value=30, max_value=200, value=70, step=1)
+        # Fitness Goals
+        with st.expander("🏋️ Fitness Goals", expanded=True):
+            goal = st.selectbox("Primary Goal", [
+                "Weight Loss", 
+                "Muscle Gain", 
+                "Maintain Fitness",
+                "Improve Endurance",
+                "Build Strength",
+                "General Health"
+            ])
+            
+            experience = st.selectbox("Fitness Experience", [
+                "Beginner (0-6 months)",
+                "Intermediate (6 months - 2 years)", 
+                "Advanced (2+ years)"
+            ])
+            
+            injuries = st.text_area("Any Injuries/Concerns", placeholder="List any injuries or health concerns...")
 
-        goal = st.selectbox("Fitness Goal", ["Weight Loss", "Muscle Gain", "Maintain Fitness"])
-        cultural_food = st.selectbox(
-            "Cultural / Regional Food",
-            ["Indian", "Mediterranean", "Continental", "East Asian", "Middle Eastern", "Latin American", "Other"],
-        )
-        dietary_pref = st.selectbox("Dietary Preference", ["Veg", "Non-Veg", "Vegan", "Eggetarian"]) 
-        equipment = st.selectbox("Available Equipment", ["None", "Dumbbells", "Resistance Bands", "Gym Access"])
-        time_available = st.slider("Daily Time Availability (minutes)", min_value=10, max_value=180, value=45, step=5)
-        budget = st.selectbox("Budget", ["Low", "Moderate", "High"])
+        # Nutrition Preferences
+        with st.expander("🍽️ Nutrition Preferences", expanded=True):
+            cultural_food = st.selectbox(
+                "Cultural / Regional Food",
+                ["Indian", "Mediterranean", "Continental", "East Asian", "Middle Eastern", "Latin American", "Other"],
+            )
+            dietary_pref = st.selectbox("Dietary Preference", [
+                "Vegetarian", 
+                "Non-Vegetarian", 
+                "Vegan", 
+                "Eggetarian",
+                "Pescatarian",
+                "Keto",
+                "Paleo"
+            ])
+            
+            allergies = st.text_area("Food Allergies", placeholder="List any food allergies...")
+            dislikes = st.text_area("Food Dislikes", placeholder="Foods you don't like...")
 
-        # BMI quick view
+        # Equipment & Schedule
+        with st.expander("⚙️ Equipment & Schedule"):
+            equipment = st.multiselect(
+                "Available Equipment", 
+                ["None", "Dumbbells", "Resistance Bands", "Gym Access", "Yoga Mat", "Pull-up Bar", "Kettlebell"],
+                default=["None"]
+            )
+            time_available = st.slider("Daily Time Availability (minutes)", min_value=10, max_value=180, value=45, step=5)
+            budget = st.selectbox("Budget Level", ["Low", "Moderate", "High"])
+            
+            workout_frequency = st.selectbox("Workout Frequency", [
+                "3 days/week",
+                "4 days/week", 
+                "5 days/week",
+                "6 days/week",
+                "Daily"
+            ])
+
+        # BMI Calculator with enhanced display
         bmi, bmi_cat = compute_bmi(height_cm=height_cm, weight_kg=weight_kg)
-        with st.expander("BMI Calculator"):
-            st.write(f"BMI: **{bmi}** ({bmi_cat})")
+        with st.expander("📊 Health Metrics"):
+            st.metric("BMI", f"{bmi}", f"{bmi_cat}")
+            
+            # BMI color coding
+            if bmi_cat == "Normal":
+                st.success("✅ Healthy BMI range!")
+            elif bmi_cat == "Underweight":
+                st.warning("⚠️ Consider consulting a healthcare provider")
+            elif bmi_cat == "Overweight":
+                st.warning("⚠️ Focus on balanced nutrition and regular exercise")
+            else:
+                st.error("🚨 Please consult a healthcare provider before starting any fitness program")
 
-        generate = st.button("✨ Generate My Plan", use_container_width=True, type="primary")
+        # Progress Tracking
+        with st.expander("📈 Progress Tracking"):
+            st.info("Track your progress weekly to stay motivated!")
+            if st.button("📊 View Progress Dashboard"):
+                st.session_state.show_progress = True
+
+        generate = st.button("✨ Generate My Personalized Plan", use_container_width=True, type="primary")
 
     return {
         "name": name,
@@ -295,11 +705,16 @@ def sidebar_form() -> Dict[str, str]:
         "height_cm": int(height_cm),
         "weight_kg": int(weight_kg),
         "goal": goal,
+        "experience": experience,
+        "injuries": injuries,
         "cultural_food": cultural_food,
         "dietary_pref": dietary_pref,
-        "equipment": equipment,
+        "allergies": allergies,
+        "dislikes": dislikes,
+        "equipment": ", ".join(equipment),
         "time_available": int(time_available),
         "budget": budget,
+        "workout_frequency": workout_frequency,
         "generate": generate,
         "bmi": bmi,
         "bmi_cat": bmi_cat,
@@ -341,75 +756,272 @@ def main() -> None:
     configure_page()
     init_session_state()
 
+    # Initialize AI services
     api_key = load_api_key()
     if not api_key:
-        st.error("GEMINI_API_KEY is missing. Please set it in your .env file.")
-    else:
-        configure_gemini(api_key)
+        st.error("🚨 GEMINI_API_KEY is missing. Please set it in your .env file.")
+        st.stop()
+    
+    # Initialize AI orchestrator and components
+    ai_orchestrator = AIOrchestrator(api_key)
+    ai_dashboard = AIDashboard(ai_orchestrator)
+    ui_components = AIUIComponents()
+    
+    # Apply AI sidebar styling
+    ui_components.ai_sidebar_style()
 
-    user_inputs = sidebar_form()
+    # Get user inputs with enhanced AI sidebar
+    user_inputs = enhanced_sidebar_form(ui_components)
 
-    # Summary chips
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Goal", user_inputs["goal"]) 
-    col2.metric("Time (min)", user_inputs["time_available"]) 
-    col3.metric("Budget", user_inputs["budget"]) 
-    col4.metric("BMI", f"{user_inputs['bmi']} ({user_inputs['bmi_cat']})")
+    # Display AI-powered profile summary
+    display_ai_profile_summary(user_inputs, ui_components)
 
+    # Main AI-powered interface
     if user_inputs["generate"]:
-        if not api_key:
-            st.stop()
-        prompt = build_prompt(user_inputs)
-        with st.spinner("Generating your personalized 7-day plans with Gemini Flash..."):
-            try:
-                full = call_gemini(prompt)
-                st.session_state.full_response = full
-                workout, diet, motivation = parse_sections(full)
-                st.session_state.workout_text = workout
-                st.session_state.diet_text = diet
-                st.session_state.motivation_text = motivation
-            except Exception as e:
-                st.error(f"Failed to generate plans: {e}")
+        generate_ai_plan(user_inputs, ai_orchestrator, ui_components)
 
-    if st.session_state.workout_text or st.session_state.diet_text:
-        tabs = st.tabs(["🏋️ Workout Plan", "🍽️ Diet Plan"])
-        with tabs[0]:
-            st.subheader("Your 7-Day Workout Plan")
-            workout_text = ensure_section_text("workout", st.session_state.workout_text)
-            st.write(workout_text)
-            pdf_bytes = generate_pdf_bytes("Workout Plan", workout_text)
-            st.download_button(
-                "⬇️ Download Workout Plan (PDF)",
-                data=io.BytesIO(pdf_bytes),
-                file_name="workout_plan.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-            st.markdown(build_data_uri_pdf(pdf_bytes, "workout_plan.pdf"), unsafe_allow_html=True)
-        with tabs[1]:
-            st.subheader("Your 7-Day Meal Plan")
-            meal_text = ensure_section_text("meal", st.session_state.diet_text)
-            st.write(meal_text)
-            pdf_bytes = generate_pdf_bytes("Meal Plan", meal_text)
-            st.download_button(
-                "⬇️ Download Meal Plan (PDF)",
-                data=io.BytesIO(pdf_bytes),
-                file_name="meal_plan.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-            st.markdown(build_data_uri_pdf(pdf_bytes, "meal_plan.pdf"), unsafe_allow_html=True)
+    # Display AI dashboard
+    if st.session_state.get("show_ai_dashboard", False):
+        display_ai_dashboard(user_inputs, ai_dashboard, ui_components)
 
-        # Motivation of the day
-        if st.session_state.motivation_text:
-            st.markdown("---")
-            st.markdown(f"### 💡 Motivation of the Day")
-            st.info(st.session_state.motivation_text)
+    # Display generated plans with AI features
+    if st.session_state.get("ai_plan_generated", False):
+        display_ai_plans(user_inputs, ai_orchestrator, ui_components)
 
-        save_to_csv_if_requested(user_inputs)
+    # AI Footer
+    st.markdown("""
+    <div class="ai-footer">
+        <h3>🤖 Powered by Advanced AI</h3>
+        <p>Made with ❤️ using Gemini Flash + Streamlit + Modular AI Architecture</p>
+        <p>Transform your fitness journey with cutting-edge artificial intelligence!</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("<div class='footer'>Made with ❤️ using Gemini Flash + Streamlit</div>", unsafe_allow_html=True)
+
+def enhanced_sidebar_form(ui_components: AIUIComponents) -> Dict[str, Any]:
+    """Enhanced sidebar with AI-powered styling"""
+    with st.sidebar:
+        ui_components.ai_header("🎯 AI Profile", "Configure your AI-powered fitness profile")
+        
+        # Personal Information
+        with st.expander("👤 Personal Details", expanded=True):
+            name = st.text_input("Full Name", value="", placeholder="Enter your name")
+            age = st.number_input("Age", min_value=10, max_value=90, value=22, step=1)
+            gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+
+            c1, c2 = st.columns(2)
+            with c1:
+                height_cm = st.number_input("Height (cm)", min_value=100, max_value=230, value=170, step=1)
+            with c2:
+                weight_kg = st.number_input("Weight (kg)", min_value=30, max_value=200, value=70, step=1)
+
+        # AI-Enhanced Fitness Goals
+        with st.expander("🏋️ AI Fitness Goals", expanded=True):
+            goal = st.selectbox("Primary Goal", config.FITNESS_GOALS)
+            experience = st.selectbox("Fitness Experience", config.EXPERIENCE_LEVELS)
+            injuries = st.text_area("Injuries/Concerns", placeholder="List any injuries or health concerns...")
+
+        # AI Nutrition Preferences
+        with st.expander("🍽️ AI Nutrition", expanded=True):
+            cultural_food = st.selectbox("Cultural Food", config.CULTURAL_FOOD_TYPES)
+            dietary_pref = st.selectbox("Dietary Preference", config.DIETARY_PREFERENCES)
+            allergies = st.text_area("Food Allergies", placeholder="List any food allergies...")
+            dislikes = st.text_area("Food Dislikes", placeholder="Foods you don't like...")
+
+        # AI Equipment & Schedule
+        with st.expander("⚙️ AI Equipment & Schedule"):
+            equipment = st.multiselect("Available Equipment", config.EQUIPMENT_OPTIONS, default=["None"])
+            time_available = st.slider("Daily Time (minutes)", min_value=10, max_value=180, value=45, step=5)
+            budget = st.selectbox("Budget Level", config.BUDGET_LEVELS)
+            workout_frequency = st.selectbox("Workout Frequency", config.WORKOUT_FREQUENCY)
+
+        # AI Health Metrics
+        bmi, bmi_cat = calculate_bmi(height_cm=height_cm, weight_kg=weight_kg)
+        with st.expander("📊 AI Health Metrics"):
+            ui_components.ai_metric_card("BMI", f"{bmi}", f"{bmi_cat}", "📏")
+            
+            # BMI color coding
+            if bmi_cat == "Normal":
+                st.success("✅ AI Analysis: Healthy BMI range!")
+            elif bmi_cat == "Underweight":
+                st.warning("⚠️ AI Recommendation: Consider consulting a healthcare provider")
+            elif bmi_cat == "Overweight":
+                st.warning("⚠️ AI Suggestion: Focus on balanced nutrition and regular exercise")
+            else:
+                st.error("🚨 AI Alert: Please consult a healthcare provider before starting any fitness program")
+
+        # AI Dashboard Access
+        with st.expander("🧠 AI Dashboard"):
+            st.info("Access advanced AI analytics and insights!")
+            if st.button("📊 Open AI Dashboard", use_container_width=True):
+                st.session_state.show_ai_dashboard = True
+                st.rerun()
+
+        # Generate AI Plan
+        generate = st.button("🤖 Generate AI-Powered Plan", use_container_width=True, type="primary")
+
+    return {
+        "name": name,
+        "age": int(age),
+        "gender": gender,
+        "height_cm": int(height_cm),
+        "weight_kg": int(weight_kg),
+        "goal": goal,
+        "experience": experience,
+        "injuries": injuries,
+        "cultural_food": cultural_food,
+        "dietary_pref": dietary_pref,
+        "allergies": allergies,
+        "dislikes": dislikes,
+        "equipment": ", ".join(equipment),
+        "time_available": int(time_available),
+        "budget": budget,
+        "workout_frequency": workout_frequency,
+        "generate": generate,
+        "bmi": bmi,
+        "bmi_cat": bmi_cat,
+    }
+
+
+def display_ai_profile_summary(user_inputs: Dict, ui_components: AIUIComponents):
+    """Display AI-powered profile summary"""
+    st.markdown("### 🤖 AI Profile Analysis")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        ui_components.ai_metric_card(
+            "🎯 Goal",
+            user_inputs["goal"],
+            "AI Optimized",
+            "🎯"
+        )
+    
+    with col2:
+        ui_components.ai_metric_card(
+            "⏱️ Time",
+            f"{user_inputs['time_available']} min",
+            "AI Scheduled",
+            "⏱️"
+        )
+    
+    with col3:
+        ui_components.ai_metric_card(
+            "💰 Budget",
+            user_inputs["budget"],
+            "AI Optimized",
+            "💰"
+        )
+    
+    with col4:
+        bmi_color = "#00ff88" if user_inputs["bmi_cat"] == "Normal" else "#ffd93d" if user_inputs["bmi_cat"] == "Overweight" else "#ff6b6b"
+        ui_components.ai_metric_card(
+            "📏 BMI",
+            f"{user_inputs['bmi']}",
+            f"{user_inputs['bmi_cat']}",
+            "📏"
+        )
+
+
+def generate_ai_plan(user_inputs: Dict, ai_orchestrator: AIOrchestrator, ui_components: AIUIComponents):
+    """Generate AI-powered comprehensive plan"""
+    with st.spinner("🤖 AI is analyzing your profile and generating personalized plans..."):
+        ui_components.ai_loading_spinner("AI is thinking...")
+        
+        try:
+            # Generate comprehensive AI plan
+            ai_plan = ai_orchestrator.generate_comprehensive_plan(user_inputs)
+            
+            # Store in session state
+            st.session_state.ai_plan = ai_plan
+            st.session_state.ai_plan_generated = True
+            st.session_state.user_profile = user_inputs
+            
+            st.success("🎉 AI has generated your personalized plan!")
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"❌ AI generation failed: {str(e)}")
+
+
+def display_ai_dashboard(user_inputs: Dict, ai_dashboard: AIDashboard, ui_components: AIUIComponents):
+    """Display AI dashboard"""
+    ai_dashboard.render_ai_overview(user_inputs, [])
+    
+    if st.button("← Back to Main"):
+        st.session_state.show_ai_dashboard = False
+        st.rerun()
+
+
+def display_ai_plans(user_inputs: Dict, ai_orchestrator: AIOrchestrator, ui_components: AIUIComponents):
+    """Display AI-generated plans with advanced features"""
+    ai_plan = st.session_state.get("ai_plan", {})
+    
+    # Enhanced tabs with AI features
+    tabs = st.tabs([
+        "🤖 AI Workout Plan", 
+        "🍽️ AI Nutrition Plan", 
+        "📊 AI Analytics", 
+        "💬 AI Coach Chat",
+        "📋 AI Summary"
+    ])
+    
+    with tabs[0]:
+        ui_components.ai_header("🏋️ AI-Powered Workout Plan", "Scientifically optimized by advanced AI")
+        
+        workout_plan = ai_plan.get("workout_plan", {})
+        if workout_plan:
+            st.json(workout_plan)  # Display structured workout plan
+        else:
+            st.info("🤖 AI is preparing your workout plan...")
+    
+    with tabs[1]:
+        ui_components.ai_header("🍽️ AI-Powered Nutrition Plan", "Metabolically optimized by advanced AI")
+        
+        nutrition_plan = ai_plan.get("nutrition_plan", {})
+        if nutrition_plan:
+            st.json(nutrition_plan)  # Display structured nutrition plan
+        else:
+            st.info("🤖 AI is preparing your nutrition plan...")
+    
+    with tabs[2]:
+        ai_dashboard = AIDashboard(ai_orchestrator)
+        ai_dashboard.render_ai_overview(user_inputs, [])
+    
+    with tabs[3]:
+        ai_dashboard = AIDashboard(ai_orchestrator)
+        ai_dashboard.render_ai_chat(user_inputs)
+    
+    with tabs[4]:
+        ui_components.ai_header("📋 AI Plan Summary", "Comprehensive overview of your AI-generated plan")
+        
+        # Display AI insights
+        insights = ai_plan.get("ai_insights", [])
+        for insight in insights:
+            ui_components.ai_insight_card({
+                "title": insight.title,
+                "description": insight.description,
+                "confidence": insight.confidence,
+                "priority": insight.priority
+            })
+        
+        # Display recommendations
+        recommendations = ai_plan.get("recommendations", [])
+        st.markdown("#### 🎯 AI Recommendations")
+        for i, rec in enumerate(recommendations[:3], 1):
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+                border-left: 4px solid #00d4ff;
+                border-radius: 10px;
+                padding: 1.5rem;
+                margin: 1rem 0;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            ">
+                <h4 style="color: #00d4ff; margin-bottom: 0.5rem;">{i}. {rec.get('title', 'AI Recommendation')}</h4>
+                <p style="color: #e0e0e0; margin: 0;">{rec.get('description', 'No description available.')}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
